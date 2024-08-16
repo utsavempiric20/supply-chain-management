@@ -30,7 +30,8 @@ contract SupplyChain {
     mapping(bytes4 => Payment) payments;
     mapping(address => bytes4[]) paymentHistory;
 
-    mapping(bytes4 => Product) manufacturerStocks;
+    mapping(bytes4 => Product) productStocks;
+    mapping(address => bytes4[]) stockHistory;
 
     uint256 ETHER_WEI_VALUE = 1e18;
 
@@ -40,10 +41,11 @@ contract SupplyChain {
     }
 
     function addProduct(
+        address _from,
         string memory _name,
         uint256 _quantity,
         uint256 _price
-    ) public {
+    ) public returns (bytes4) {
         bytes4 _productId = bytes4(
             keccak256(abi.encodePacked(_name, _price, block.timestamp))
         );
@@ -55,18 +57,20 @@ contract SupplyChain {
         });
         products[_productId] = product;
         productExit[_productId] = true;
-        productHistory[msg.sender].push(_productId);
+        productHistory[_from].push(_productId);
+        return _productId;
     }
 
     function createPayment(
         bytes4 _productId,
+        address _from,
         address _to,
         uint256 _amount
-    ) public {
+    ) public payable isProductExist(_productId) {
         bytes4 _paymentId = bytes4(
             keccak256(
                 abi.encodePacked(
-                    msg.sender,
+                    _from,
                     _productId,
                     _to,
                     _amount,
@@ -77,20 +81,38 @@ contract SupplyChain {
         Payment memory payment = Payment({
             paymentId: _paymentId,
             productId: _productId,
-            from: msg.sender,
+            from: _from,
             to: _to,
             amount: _amount * ETHER_WEI_VALUE,
             timeStamp: block.timestamp,
             isDone: true
         });
         payments[_paymentId] = payment;
-        paymentHistory[msg.sender].push(_paymentId);
+        paymentHistory[_from].push(_paymentId);
         paymentHistory[_to].push(_paymentId);
-
-        (bool success, ) = payable(_to).call{value: _amount}("");
+        console.log(_from, _to, msg.value);
+        (bool success, ) = payable(_to).call{value: msg.value}("");
         if (!success) {
             revert PaymentFailed();
         }
+    }
+
+    function updateProductQuantity(
+        bytes4 _productId,
+        uint256 _quantity
+    ) public {
+        products[_productId].quantity -= _quantity;
+    }
+
+    function updateProductStocks(
+        address _from,
+        bytes4 _productId,
+        uint256 _quantity
+    ) public {
+        Product storage product = products[_productId];
+        productStocks[_productId] = product;
+        productStocks[_productId].quantity = _quantity;
+        stockHistory[_from].push(_productId);
     }
 
     function getProduct(
@@ -114,7 +136,7 @@ contract SupplyChain {
         );
     }
 
-    function getManufacturerStock(
+    function getProductStocks(
         bytes4 _productId
     )
         public
@@ -126,7 +148,7 @@ contract SupplyChain {
             uint256 price
         )
     {
-        Product memory product = manufacturerStocks[_productId];
+        Product memory product = productStocks[_productId];
         return (
             product.productId,
             product.name,
@@ -139,6 +161,12 @@ contract SupplyChain {
         address person
     ) public view returns (bytes4[] memory) {
         return productHistory[person];
+    }
+
+    function getStockHistory(
+        address person
+    ) public view returns (bytes4[] memory) {
+        return stockHistory[person];
     }
 
     function getPayment(
@@ -172,47 +200,5 @@ contract SupplyChain {
         address person
     ) public view returns (bytes4[] memory) {
         return paymentHistory[person];
-    }
-}
-
-contract Supplier is SupplyChain {
-    function supplyMaterialToManufacturer(
-        bytes4 _productId,
-        address _to,
-        uint256 _quantity,
-        uint256 _amount
-    ) public payable isProductExist(_productId) {
-        console.log(msg.value);
-        require(
-            _amount * ETHER_WEI_VALUE ==
-                products[_productId].price * _quantity * ETHER_WEI_VALUE,
-            "Insufficiant Amount."
-        );
-        require(msg.value == _amount * ETHER_WEI_VALUE, "");
-
-        Product storage product = products[_productId];
-        manufacturerStocks[_productId] = product;
-        product.quantity -= _quantity;
-        manufacturerStocks[_productId].quantity = _quantity;
-        productHistory[msg.sender].push(_productId);
-        createPayment(_productId, _to, _amount);
-    }
-}
-
-contract Manufacturer is SupplyChain {
-    function takeRawMaterials(
-        address supplier,
-        bytes4 _productId,
-        address _to,
-        uint256 _quantity,
-        uint256 _amount
-    ) public payable {
-        console.log(supplier);
-        Supplier(supplier).supplyMaterialToManufacturer(
-            _productId,
-            _to,
-            _quantity,
-            _amount
-        );
     }
 }
