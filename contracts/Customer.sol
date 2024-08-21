@@ -1,33 +1,98 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "./SupplyChain.sol";
 import "./Retailer.sol";
 
 contract Customer {
-    SupplyChain supplyChain;
-    Retailer retailer;
-
-    uint256 ETHER_WEI_VALUE = 1e18;
-
-    constructor(address _supplyChain, address _retailer) {
-        supplyChain = SupplyChain(_supplyChain);
-        retailer = Retailer(_retailer);
+    struct Product {
+        bytes4 productId;
+        address retailer;
+        string name;
+        uint256 quantity;
+        uint256 price;
     }
 
+    struct Payment {
+        bytes4 paymentId;
+        bytes4 productId;
+        address from;
+        address to;
+        uint256 amount;
+        uint256 timeStamp;
+        bool isDone;
+    }
+
+    mapping(bytes4 => Product) products;
+    mapping(bytes4 => bool) productExitStatus;
+    mapping(address => bytes4[]) productHistory;
+
+    mapping(bytes4 => Payment) payments;
+    mapping(address => bytes4[]) paymentHistory;
+
+    uint256 constant ETHER_WEI_VALUE = 1e18;
+
     function buyProduct(
+        address _retailerContractAddress,
+        address _retailerAddress,
+        bytes4 _productId,
+        uint256 _quantity
+    ) public {
+        Retailer(_retailerContractAddress).buyProductByCustomer(
+            _productId,
+            _retailerAddress,
+            _quantity
+        );
+        (, string memory name, , uint256 price) = Distributor(
+            _retailerContractAddress
+        ).getProduct(_productId);
+
+        if (products[_productId].productId != _productId) {
+            Product memory _products = Product({
+                productId: _productId,
+                retailer: _retailerAddress,
+                name: name,
+                quantity: _quantity,
+                price: price
+            });
+            products[_productId] = _products;
+            productHistory[msg.sender].push(_productId);
+        } else {
+            products[_productId].quantity += _quantity;
+        }
+    }
+
+    function receiveProductFromRetailer(
+        address _retailerContractAddress,
         address _retailer,
+        address _customer,
         bytes4 _productId,
         uint256 _quantity,
         uint256 _amount
     ) public payable {
-        retailer.sellToCustomer{value: msg.value}(
-            _productId,
-            msg.sender,
-            _retailer,
-            _quantity,
-            _amount
+        require(products[_productId].quantity == _quantity, "InValid Quantity");
+        require(
+            _amount == products[_productId].price * _quantity,
+            "Insufficiant amount"
         );
+        require(msg.value == _amount, "InValid Value");
+
+        (
+            bytes4 paymentId,
+            uint256 amount,
+            uint256 timeStamp,
+            bool isDone
+        ) = Retailer(_retailerContractAddress).receivePaymentFromCustomer{
+                value: msg.value
+            }(_productId, _customer, _retailer, _quantity, _amount);
+
+        payments[paymentId].paymentId = paymentId;
+        payments[paymentId].productId = _productId;
+        payments[paymentId].from = _customer;
+        payments[paymentId].to = _retailer;
+        payments[paymentId].amount = amount;
+        payments[paymentId].timeStamp = timeStamp;
+        payments[paymentId].isDone = isDone;
+        paymentHistory[msg.sender].push(paymentId);
     }
 
     function getProduct(
@@ -42,13 +107,19 @@ contract Customer {
             uint256 price
         )
     {
-        return supplyChain.getProduct(_productId);
+        Product memory product = products[_productId];
+        return (
+            product.productId,
+            product.name,
+            product.quantity,
+            product.price
+        );
     }
 
-    function getProductHistory(
-        address person
+    function getProductorStockHistory(
+        address _person
     ) public view returns (bytes4[] memory) {
-        return supplyChain.getProductHistory(person);
+        return productHistory[_person];
     }
 
     function getPayment(
@@ -66,12 +137,21 @@ contract Customer {
             bool isDone
         )
     {
-        return supplyChain.getPayment(_paymentId);
+        Payment memory payment = payments[_paymentId];
+        return (
+            payment.paymentId,
+            payment.productId,
+            payment.from,
+            payment.to,
+            payment.amount,
+            payment.timeStamp,
+            payment.isDone
+        );
     }
 
     function getPaymentHistory(
         address person
     ) public view returns (bytes4[] memory) {
-        return supplyChain.getPaymentHistory(person);
+        return paymentHistory[person];
     }
 }
