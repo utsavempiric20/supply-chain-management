@@ -123,6 +123,18 @@ contract Supplier {
         return _productId;
     }
 
+    function updateProductStocks(
+        bytes4 _productId,
+        uint256 _quantity,
+        uint256 _price,
+        string memory _location
+    ) public productExist(_productId) {
+        products[_productId].quantity = _quantity;
+        products[_productId].price = _price;
+        products[_productId].timeStamp = block.timestamp;
+        products[_productId].location = _location;
+    }
+
     // For Manufacturer Interaction
     function purchaseMaterialsByManufacturer(
         bytes4 _productId,
