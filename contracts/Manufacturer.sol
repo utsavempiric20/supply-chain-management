@@ -2,8 +2,11 @@
 pragma solidity ^0.8.19;
 
 import "./Supplier.sol";
+import "./ProductSupplyCycle.sol";
 
 contract Manufacturer {
+    ProductSupplyCycle productSupplyCycle;
+
     struct Manufacturers {
         bytes4 manufacturerId;
         string name;
@@ -11,13 +14,18 @@ contract Manufacturer {
     }
 
     struct Product {
+        bytes4 productQrCode;
         bytes4 productId;
+        address manufacturerAddress;
         string name;
         uint256 quantity;
         uint256 price;
+        uint256 timeStamp;
+        string location;
     }
 
     struct Stock {
+        bytes4 productQrCode;
         bytes4 productId;
         address supplier;
         string name;
@@ -30,6 +38,7 @@ contract Manufacturer {
         bytes4 productId;
         address from;
         address to;
+        uint256 quantity;
         uint256 amount;
         uint256 timeStamp;
         bool isDone;
@@ -72,6 +81,10 @@ contract Manufacturer {
         _;
     }
 
+    constructor(address _productSupplyCycle) {
+        productSupplyCycle = ProductSupplyCycle(_productSupplyCycle);
+    }
+
     function registerManufacturer(
         string memory _name
     ) public manufacturerExist(msg.sender) {
@@ -89,22 +102,34 @@ contract Manufacturer {
     }
 
     function addProduct(
+        bytes4 _productQrCode,
         string memory _name,
         uint256 _quantity,
-        uint256 _price
+        uint256 _price,
+        string memory _location
     ) public onlyManufacturer(msg.sender) returns (bytes4) {
         bytes4 _productId = bytes4(
             keccak256(abi.encodePacked(_name, _price, block.timestamp))
         );
         Product memory product = Product({
+            productQrCode: _productQrCode,
             productId: _productId,
+            manufacturerAddress: msg.sender,
             name: _name,
             quantity: _quantity,
-            price: _price
+            price: _price,
+            timeStamp: block.timestamp,
+            location: _location
         });
         products[_productId] = product;
         productExitStatus[_productId] = true;
         productHistory[msg.sender].push(_productId);
+
+        productSupplyCycle.setManufacturerProductIdUgid(
+            _productQrCode,
+            _productId
+        );
+
         return _productId;
     }
 
@@ -162,6 +187,7 @@ contract Manufacturer {
             productId: _productId,
             from: _from,
             to: _to,
+            quantity: _quantity,
             amount: _amount,
             timeStamp: block.timestamp,
             isDone: true
@@ -192,12 +218,20 @@ contract Manufacturer {
             _supplierAddress,
             _quantity
         );
-        (, string memory name, , uint256 price) = Supplier(
-            _supplierContractAddress
-        ).getProduct(_productId);
+        (
+            bytes4 productQrCode,
+            ,
+            ,
+            string memory name,
+            ,
+            uint256 price,
+            ,
+
+        ) = Supplier(_supplierContractAddress).getProduct(_productId);
 
         if (stocks[_productId].productId != _productId) {
             Stock memory _stocks = Stock({
+                productQrCode: productQrCode,
                 productId: _productId,
                 supplier: _supplierAddress,
                 name: name,
@@ -246,6 +280,16 @@ contract Manufacturer {
         paymentHistory[msg.sender].push(paymentId);
     }
 
+    function paymentToSupplier(
+        address _supplierContractAddress,
+        address _supplier,
+        address _manufacturer,
+        bytes4 _productCode,
+        bytes4 _productId,
+        uint256 _quantity,
+        uint256 _amount
+    ) internal {}
+
     function getManufacturer(
         bytes4 _manufacturerId
     )
@@ -277,18 +321,26 @@ contract Manufacturer {
         public
         view
         returns (
+            bytes4 productQrCode,
             bytes4 productId,
+            address manufacturerAddress,
             string memory name,
             uint256 quantity,
-            uint256 price
+            uint256 price,
+            uint256 timeStamp,
+            string memory location
         )
     {
         Product memory product = products[_productId];
         return (
+            product.productQrCode,
             product.productId,
+            product.manufacturerAddress,
             product.name,
             product.quantity,
-            product.price
+            product.price,
+            product.timeStamp,
+            product.location
         );
     }
 
@@ -308,6 +360,7 @@ contract Manufacturer {
         public
         view
         returns (
+            bytes4 productQrCode,
             bytes4 productId,
             address supplier,
             string memory name,
@@ -317,6 +370,7 @@ contract Manufacturer {
     {
         Stock memory stock = stocks[_productId];
         return (
+            stock.productQrCode,
             stock.productId,
             stock.supplier,
             stock.name,

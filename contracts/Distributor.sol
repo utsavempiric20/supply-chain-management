@@ -2,8 +2,11 @@
 pragma solidity ^0.8.19;
 
 import "./Manufacturer.sol";
+import "./ProductSupplyCycle.sol";
 
 contract Distributor {
+    ProductSupplyCycle productSupplyCycle;
+
     struct Distributors {
         bytes4 distributorId;
         string name;
@@ -11,13 +14,18 @@ contract Distributor {
     }
 
     struct Product {
+        bytes4 productQrCode;
         bytes4 productId;
+        address distributorAddress;
         string name;
         uint256 quantity;
         uint256 price;
+        uint256 timeStamp;
+        string location;
     }
 
     struct Stock {
+        bytes4 productQrCode;
         bytes4 productId;
         address manufacturer;
         string name;
@@ -30,6 +38,7 @@ contract Distributor {
         bytes4 productId;
         address from;
         address to;
+        uint256 quantity;
         uint256 amount;
         uint256 timeStamp;
         bool isDone;
@@ -72,6 +81,10 @@ contract Distributor {
         _;
     }
 
+    constructor(address _productSupplyCycle) {
+        productSupplyCycle = ProductSupplyCycle(_productSupplyCycle);
+    }
+
     function registerDistributor(
         string memory _name
     ) public distributorExist(msg.sender) {
@@ -89,22 +102,34 @@ contract Distributor {
     }
 
     function addProduct(
+        bytes4 _productQrCode,
         string memory _name,
         uint256 _quantity,
-        uint256 _price
+        uint256 _price,
+        string memory _location
     ) public onlyDistributor(msg.sender) returns (bytes4) {
         bytes4 _productId = bytes4(
             keccak256(abi.encodePacked(_name, _price, block.timestamp))
         );
         Product memory product = Product({
+            productQrCode: _productQrCode,
             productId: _productId,
+            distributorAddress: msg.sender,
             name: _name,
             quantity: _quantity,
-            price: _price
+            price: _price,
+            timeStamp: block.timestamp,
+            location: _location
         });
         products[_productId] = product;
         productExitStatus[_productId] = true;
         productHistory[msg.sender].push(_productId);
+
+        productSupplyCycle.setDistributorProductIdUgid(
+            _productQrCode,
+            _productId
+        );
+
         return _productId;
     }
 
@@ -162,6 +187,7 @@ contract Distributor {
             productId: _productId,
             from: _from,
             to: _to,
+            quantity: _quantity,
             amount: _amount,
             timeStamp: block.timestamp,
             isDone: true
@@ -192,12 +218,20 @@ contract Distributor {
             _manufacturerAddress,
             _quantity
         );
-        (, string memory name, , uint256 price) = Manufacturer(
-            _manufacturerContractAddress
-        ).getProduct(_productId);
+        (
+            bytes4 productQrCode,
+            ,
+            ,
+            string memory name,
+            ,
+            uint256 price,
+            ,
+
+        ) = Manufacturer(_manufacturerContractAddress).getProduct(_productId);
 
         if (stocks[_productId].productId != _productId) {
             Stock memory _stocks = Stock({
+                productQrCode: productQrCode,
                 productId: _productId,
                 manufacturer: _manufacturerAddress,
                 name: name,
@@ -226,7 +260,6 @@ contract Distributor {
             "Insufficiant amount"
         );
         require(msg.value == _amount, "InValid Value");
-
         (
             bytes4 paymentId,
             uint256 amount,
@@ -250,6 +283,16 @@ contract Distributor {
         payments[paymentId].isDone = isDone;
         paymentHistory[msg.sender].push(paymentId);
     }
+
+    function pyamentToManufacturer(
+        address _manufacturerContractAddress,
+        address _manufacturer,
+        address _distributor,
+        bytes4 _productCode,
+        bytes4 _productId,
+        uint256 _quantity,
+        uint256 _amount
+    ) internal {}
 
     function getDistributor(
         bytes4 _distributorId
@@ -282,18 +325,26 @@ contract Distributor {
         public
         view
         returns (
+            bytes4 productQrCode,
             bytes4 productId,
+            address distributorAddress,
             string memory name,
             uint256 quantity,
-            uint256 price
+            uint256 price,
+            uint256 timeStamp,
+            string memory location
         )
     {
         Product memory product = products[_productId];
         return (
+            product.productQrCode,
             product.productId,
+            product.distributorAddress,
             product.name,
             product.quantity,
-            product.price
+            product.price,
+            product.timeStamp,
+            product.location
         );
     }
 
@@ -313,6 +364,7 @@ contract Distributor {
         public
         view
         returns (
+            bytes4 productQrCode,
             bytes4 productId,
             address manufacturer,
             string memory name,
@@ -322,6 +374,7 @@ contract Distributor {
     {
         Stock memory stock = stocks[_productId];
         return (
+            stock.productQrCode,
             stock.productId,
             stock.manufacturer,
             stock.name,

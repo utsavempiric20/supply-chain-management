@@ -2,8 +2,11 @@
 pragma solidity ^0.8.19;
 
 import "./Distributor.sol";
+import "./ProductSupplyCycle.sol";
 
 contract Retailer {
+    ProductSupplyCycle productSupplyCycle;
+
     struct Retailers {
         bytes4 retailerId;
         string name;
@@ -11,13 +14,18 @@ contract Retailer {
     }
 
     struct Product {
+        bytes4 productQrCode;
         bytes4 productId;
+        address retailerAddress;
         string name;
         uint256 quantity;
         uint256 price;
+        uint256 timeStamp;
+        string location;
     }
 
     struct Stock {
+        bytes4 productQrCode;
         bytes4 productId;
         address distributor;
         string name;
@@ -30,6 +38,7 @@ contract Retailer {
         bytes4 productId;
         address from;
         address to;
+        uint256 quantity;
         uint256 amount;
         uint256 timeStamp;
         bool isDone;
@@ -72,6 +81,10 @@ contract Retailer {
         _;
     }
 
+    constructor(address _productSupplyCycle) {
+        productSupplyCycle = ProductSupplyCycle(_productSupplyCycle);
+    }
+
     function registerRetailer(
         string memory _name
     ) public retailerExist(msg.sender) {
@@ -89,22 +102,31 @@ contract Retailer {
     }
 
     function addProduct(
+        bytes4 _productQrCode,
         string memory _name,
         uint256 _quantity,
-        uint256 _price
+        uint256 _price,
+        string memory _location
     ) public onlyRetailer(msg.sender) returns (bytes4) {
         bytes4 _productId = bytes4(
             keccak256(abi.encodePacked(_name, _price, block.timestamp))
         );
         Product memory product = Product({
+            productQrCode: _productQrCode,
             productId: _productId,
+            retailerAddress: msg.sender,
             name: _name,
             quantity: _quantity,
-            price: _price
+            price: _price,
+            timeStamp: block.timestamp,
+            location: _location
         });
         products[_productId] = product;
         productExitStatus[_productId] = true;
         productHistory[msg.sender].push(_productId);
+
+        productSupplyCycle.setRetailerProductIdUgid(_productQrCode, _productId);
+
         return _productId;
     }
 
@@ -162,6 +184,7 @@ contract Retailer {
             productId: _productId,
             from: _from,
             to: _to,
+            quantity: _quantity,
             amount: _amount,
             timeStamp: block.timestamp,
             isDone: true
@@ -192,12 +215,20 @@ contract Retailer {
             _distributorAddress,
             _quantity
         );
-        (, string memory name, , uint256 price) = Distributor(
-            _distributorContractAddress
-        ).getProduct(_productId);
+        (
+            bytes4 productQrCode,
+            ,
+            ,
+            string memory name,
+            ,
+            uint256 price,
+            ,
+
+        ) = Distributor(_distributorContractAddress).getProduct(_productId);
 
         if (stocks[_productId].productId != _productId) {
             Stock memory _stocks = Stock({
+                productQrCode: productQrCode,
                 productId: _productId,
                 distributor: _distributorAddress,
                 name: name,
@@ -269,18 +300,26 @@ contract Retailer {
         public
         view
         returns (
+            bytes4 productQrCode,
             bytes4 productId,
+            address retailerAddress,
             string memory name,
             uint256 quantity,
-            uint256 price
+            uint256 price,
+            uint256 timeStamp,
+            string memory location
         )
     {
         Product memory product = products[_productId];
         return (
+            product.productQrCode,
             product.productId,
+            product.retailerAddress,
             product.name,
             product.quantity,
-            product.price
+            product.price,
+            product.timeStamp,
+            product.location
         );
     }
 
@@ -300,6 +339,7 @@ contract Retailer {
         public
         view
         returns (
+            bytes4 productQrCode,
             bytes4 productId,
             address distributor,
             string memory name,
@@ -309,6 +349,7 @@ contract Retailer {
     {
         Stock memory stock = stocks[_productId];
         return (
+            stock.productQrCode,
             stock.productId,
             stock.distributor,
             stock.name,

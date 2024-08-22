@@ -2,8 +2,11 @@
 pragma solidity ^0.8.19;
 
 import "./SupplyChain.sol";
+import "./ProductSupplyCycle.sol";
 
 contract Supplier {
+    ProductSupplyCycle productSupplyCycle;
+
     struct Suppliers {
         bytes4 supplierId;
         string name;
@@ -11,10 +14,14 @@ contract Supplier {
     }
 
     struct Product {
+        bytes4 productQrCode;
         bytes4 productId;
+        address supplierAddress;
         string name;
         uint256 quantity;
         uint256 price;
+        uint256 timeStamp;
+        string location;
     }
 
     struct Payment {
@@ -22,6 +29,7 @@ contract Supplier {
         bytes4 productId;
         address from;
         address to;
+        uint256 quantity;
         uint256 amount;
         uint256 timeStamp;
         bool isDone;
@@ -62,6 +70,10 @@ contract Supplier {
         _;
     }
 
+    constructor(address _productSupplyCycle) {
+        productSupplyCycle = ProductSupplyCycle(_productSupplyCycle);
+    }
+
     function registerSupplier(
         string memory _name
     ) public supplierExist(msg.sender) {
@@ -81,20 +93,33 @@ contract Supplier {
     function addProduct(
         string memory _name,
         uint256 _quantity,
-        uint256 _price
+        uint256 _price,
+        string memory _location
     ) public onlySupplier(msg.sender) returns (bytes4) {
         bytes4 _productId = bytes4(
             keccak256(abi.encodePacked(_name, _price, block.timestamp))
         );
+
+        bytes4 productQrCode = bytes4(
+            keccak256(
+                abi.encodePacked(_productId, _name, _price, block.timestamp)
+            )
+        );
         Product memory product = Product({
+            productQrCode: productQrCode,
             productId: _productId,
+            supplierAddress: msg.sender,
             name: _name,
             quantity: _quantity,
-            price: _price
+            price: _price,
+            timeStamp: block.timestamp,
+            location: _location
         });
         products[_productId] = product;
         productExitStatus[_productId] = true;
         productHistory[msg.sender].push(_productId);
+
+        productSupplyCycle.setSupplierProductIdUgid(productQrCode, _productId);
         return _productId;
     }
 
@@ -160,6 +185,7 @@ contract Supplier {
             productId: _productId,
             from: _from,
             to: _to,
+            quantity: _quantity,
             amount: _amount,
             timeStamp: block.timestamp,
             isDone: true
@@ -201,18 +227,26 @@ contract Supplier {
         public
         view
         returns (
+            bytes4 productQrCode,
             bytes4 productId,
+            address supplierAddress,
             string memory name,
             uint256 quantity,
-            uint256 price
+            uint256 price,
+            uint256 timeStamp,
+            string memory location
         )
     {
         Product memory product = products[_productId];
         return (
+            product.productQrCode,
             product.productId,
+            product.supplierAddress,
             product.name,
             product.quantity,
-            product.price
+            product.price,
+            product.timeStamp,
+            product.location
         );
     }
 

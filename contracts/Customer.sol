@@ -2,9 +2,17 @@
 pragma solidity ^0.8.19;
 
 import "./Retailer.sol";
+import "./ProductSupplyCycle.sol";
 
 contract Customer {
+    ProductSupplyCycle productSupplyCycle;
+
+    constructor(address _productSupplyCycle) {
+        productSupplyCycle = ProductSupplyCycle(_productSupplyCycle);
+    }
+
     struct Product {
+        bytes4 productQrCode;
         bytes4 productId;
         address retailer;
         string name;
@@ -17,6 +25,7 @@ contract Customer {
         bytes4 productId;
         address from;
         address to;
+        uint256 quantity;
         uint256 amount;
         uint256 timeStamp;
         bool isDone;
@@ -42,12 +51,20 @@ contract Customer {
             _retailerAddress,
             _quantity
         );
-        (, string memory name, , uint256 price) = Distributor(
-            _retailerContractAddress
-        ).getProduct(_productId);
+        (
+            bytes4 productQrCode,
+            ,
+            ,
+            string memory name,
+            ,
+            uint256 price,
+            ,
+
+        ) = Retailer(_retailerContractAddress).getProduct(_productId);
 
         if (products[_productId].productId != _productId) {
             Product memory _products = Product({
+                productQrCode: productQrCode,
                 productId: _productId,
                 retailer: _retailerAddress,
                 name: name,
@@ -89,10 +106,27 @@ contract Customer {
         payments[paymentId].productId = _productId;
         payments[paymentId].from = _customer;
         payments[paymentId].to = _retailer;
+        payments[paymentId].quantity = _quantity;
         payments[paymentId].amount = amount;
         payments[paymentId].timeStamp = timeStamp;
         payments[paymentId].isDone = isDone;
         paymentHistory[msg.sender].push(paymentId);
+    }
+
+    function getProductFullCycle(
+        bytes4 _productQrCode
+    )
+        public
+        view
+        returns (
+            bytes4 productQrCode,
+            bytes4 supplierProductId,
+            bytes4 manufacturerProductId,
+            bytes4 distributorProductId,
+            bytes4 retailerProductId
+        )
+    {
+        return productSupplyCycle.getProductFullDetails(_productQrCode);
     }
 
     function getProduct(
@@ -101,6 +135,7 @@ contract Customer {
         public
         view
         returns (
+            bytes4 productQrCode,
             bytes4 productId,
             string memory name,
             uint256 quantity,
@@ -109,6 +144,7 @@ contract Customer {
     {
         Product memory product = products[_productId];
         return (
+            product.productQrCode,
             product.productId,
             product.name,
             product.quantity,
