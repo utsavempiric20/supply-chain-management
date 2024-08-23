@@ -12,11 +12,13 @@ contract Customer {
     }
 
     struct Product {
+        bytes4 buyingId;
         bytes4 productQrCode;
         bytes4 productId;
         address retailer;
         string name;
-        uint256 quantity;
+        uint256 newQuantity;
+        uint256 oldQuantity;
         uint256 price;
     }
 
@@ -43,14 +45,17 @@ contract Customer {
     function buyProduct(
         address _retailerContractAddress,
         address _retailerAddress,
+        address _customerAddress,
         bytes4 _productId,
         uint256 _quantity
     ) public {
-        Retailer(_retailerContractAddress).buyProductByCustomer(
-            _productId,
-            _retailerAddress,
-            _quantity
-        );
+        bytes4 _sellId = Retailer(_retailerContractAddress)
+            .buyProductByCustomer(
+                _productId,
+                _customerAddress,
+                _retailerAddress,
+                _quantity
+            );
         (
             bytes4 productQrCode,
             ,
@@ -64,17 +69,21 @@ contract Customer {
 
         if (products[_productId].productId != _productId) {
             Product memory _products = Product({
+                buyingId: _sellId,
                 productQrCode: productQrCode,
                 productId: _productId,
                 retailer: _retailerAddress,
                 name: name,
-                quantity: _quantity,
+                newQuantity: _quantity,
+                oldQuantity: 0,
                 price: price
             });
             products[_productId] = _products;
             productHistory[msg.sender].push(_productId);
         } else {
-            products[_productId].quantity += _quantity;
+            products[_productId].oldQuantity += products[_productId]
+                .newQuantity;
+            products[_productId].newQuantity = _quantity;
         }
     }
 
@@ -82,32 +91,38 @@ contract Customer {
         address _retailerContractAddress,
         address _retailer,
         address _customer,
+        bytes4 _buyingId,
         bytes4 _productId,
         uint256 _quantity,
         uint256 _amount
     ) public payable {
-        require(products[_productId].quantity == _quantity, "InValid Quantity");
+        require(
+            products[_productId].newQuantity == _quantity,
+            "InValid Quantity"
+        );
         require(
             _amount == products[_productId].price * _quantity,
             "Insufficiant amount"
         );
         require(msg.value == _amount, "InValid Value");
 
-        (
-            bytes4 paymentId,
-            uint256 amount,
-            uint256 timeStamp,
-            bool isDone
-        ) = Retailer(_retailerContractAddress).receivePaymentFromCustomer{
-                value: msg.value
-            }(_productId, _customer, _retailer, _quantity, _amount);
+        (bytes4 paymentId, uint256 timeStamp, bool isDone) = Retailer(
+            _retailerContractAddress
+        ).receivePaymentFromCustomer{value: msg.value}(
+            _buyingId,
+            _productId,
+            _customer,
+            _retailer,
+            _quantity,
+            _amount
+        );
 
         payments[paymentId].paymentId = paymentId;
         payments[paymentId].productId = _productId;
         payments[paymentId].from = _customer;
         payments[paymentId].to = _retailer;
         payments[paymentId].quantity = _quantity;
-        payments[paymentId].amount = amount;
+        payments[paymentId].amount = _amount;
         payments[paymentId].timeStamp = timeStamp;
         payments[paymentId].isDone = isDone;
         paymentHistory[msg.sender].push(paymentId);
@@ -135,19 +150,23 @@ contract Customer {
         public
         view
         returns (
+            bytes4 buyingId,
             bytes4 productQrCode,
             bytes4 productId,
             string memory name,
-            uint256 quantity,
+            uint256 newQuantity,
+            uint256 oldQuantity,
             uint256 price
         )
     {
         Product memory product = products[_productId];
         return (
+            product.buyingId,
             product.productQrCode,
             product.productId,
             product.name,
-            product.quantity,
+            product.newQuantity,
+            product.oldQuantity,
             product.price
         );
     }
