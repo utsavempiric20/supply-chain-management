@@ -237,7 +237,7 @@ contract Manufacturer {
         );
         require(msg.value == _amount, "Insufficiant Value");
 
-        (paymentId, timeStamp, isDone) = recievePayment(
+        (paymentId, timeStamp, isDone) = receivePayment(
             _sellId,
             _productId,
             _from,
@@ -251,7 +251,7 @@ contract Manufacturer {
         return (paymentId, timeStamp, isDone);
     }
 
-    function recievePayment(
+    function receivePayment(
         bytes4 _sellId,
         bytes4 _productId,
         address _from,
